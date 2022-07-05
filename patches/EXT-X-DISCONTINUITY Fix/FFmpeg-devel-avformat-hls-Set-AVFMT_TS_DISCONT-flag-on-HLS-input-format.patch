@@ -1,0 +1,96 @@
+From patchwork Sun Oct 27 18:39:08 2019
+Content-Type: text/plain; charset="utf-8"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+X-Patchwork-Submitter: Philip Langdale <philipl@overt.org>
+X-Patchwork-Id: 15995
+Return-Path: <ffmpeg-devel-bounces@ffmpeg.org>
+X-Original-To: patchwork@ffaux-bg.ffmpeg.org
+Delivered-To: patchwork@ffaux-bg.ffmpeg.org
+Received: from ffbox0-bg.mplayerhq.hu (ffbox0-bg.ffmpeg.org [79.124.17.100])
+	by ffaux.localdomain (Postfix) with ESMTP id 7785A44AB62
+	for <patchwork@ffaux-bg.ffmpeg.org>;
+	Sun, 27 Oct 2019 20:39:26 +0200 (EET)
+Received: from [127.0.1.1] (localhost [127.0.0.1])
+	by ffbox0-bg.mplayerhq.hu (Postfix) with ESMTP id 51BE068AE9C;
+	Sun, 27 Oct 2019 20:39:26 +0200 (EET)
+X-Original-To: ffmpeg-devel@ffmpeg.org
+Delivered-To: ffmpeg-devel@ffmpeg.org
+Received: from mail.overt.org (mail.overt.org [157.230.92.47])
+	by ffbox0-bg.mplayerhq.hu (Postfix) with ESMTPS id AEE8268ACF7
+	for <ffmpeg-devel@ffmpeg.org>; Sun, 27 Oct 2019 20:39:20 +0200 (EET)
+Received: from authenticated-user (mail.overt.org [157.230.92.47])
+	(using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 (256/256 bits))
+	(No client certificate requested)
+	by mail.overt.org (Postfix) with ESMTPSA id 2F6B93FCE3;
+	Sun, 27 Oct 2019 13:39:19 -0500 (CDT)
+DKIM-Signature: v=1; a=rsa-sha256; c=simple/simple; d=overt.org; s=mail;
+	t=1572201559; bh=T1TxBDq/alcPVTdcgWauKZNzveg1SeMTXwRvp2DEwyU=;
+	h=From:To:Cc:Subject:Date:From;
+	b=Sz0HYRzhaoxJtMzQfnFK4CDpH8U4MCIgzVfRqx11HK1WXG+dF+3h3A77JG26XdITs
+	iirzHkE57W1avi83sHl7O/QG2iH2cllvVRxW86+dWggmijCf76y4Oz+Tampwgv8sEo
+	CGyAsYuOUbxBA3m8DeWweXemMJMIOUCsBeOwSJcYiakmxzPaXiOuf5XqHUGwSiccSy
+	sOMNdV6ANxSsEhM3B5vadszs7NzmBnEwyvW5mpPAzk58PfO5zUWd9D1SUch/m6hqD4
+	ZaRDegRIBEvaEFix5H+bMLGy2pdF0fJXwaBLJ2BxEFmSpHqF1Wm7CFeHHmMaOyksg+
+	hwjtCyJl7q92Q==
+From: Philip Langdale <philipl@overt.org>
+To: ffmpeg-devel@ffmpeg.org
+Date: Sun, 27 Oct 2019 11:39:08 -0700
+Message-Id: <20191027183908.15436-1-philipl@overt.org>
+MIME-Version: 1.0
+Subject: [FFmpeg-devel] [PATCH] avformat/hls: Set AVFMT_TS_DISCONT flag on
+	HLS input format
+X-BeenThere: ffmpeg-devel@ffmpeg.org
+X-Mailman-Version: 2.1.20
+Precedence: list
+List-Id: FFmpeg development discussions and patches <ffmpeg-devel.ffmpeg.org>
+List-Unsubscribe: <https://ffmpeg.org/mailman/options/ffmpeg-devel>,
+	<mailto:ffmpeg-devel-request@ffmpeg.org?subject=unsubscribe>
+List-Archive: <http://ffmpeg.org/pipermail/ffmpeg-devel/>
+List-Post: <mailto:ffmpeg-devel@ffmpeg.org>
+List-Help: <mailto:ffmpeg-devel-request@ffmpeg.org?subject=help>
+List-Subscribe: <https://ffmpeg.org/mailman/listinfo/ffmpeg-devel>,
+	<mailto:ffmpeg-devel-request@ffmpeg.org?subject=subscribe>
+Reply-To: FFmpeg development discussions and patches
+	<ffmpeg-devel@ffmpeg.org>
+Cc: Joe Koberg <joe@koberg.us>, Philip Langdale <philipl@overt.org>
+Errors-To: ffmpeg-devel-bounces@ffmpeg.org
+Sender: "ffmpeg-devel" <ffmpeg-devel-bounces@ffmpeg.org>
+
+There have been many reports over the years about problems when
+taking an HLS stream as input to `ffmpeg` where there are timestamp
+discontinuities present. This is explicitly supported in the
+HLS spec (EXT-X-DISCONTINUITY) and often used for ad injection.
+
+Various fixes and work-arounds have been proposed over the years,
+but one step that seems obvious, even if it's not a complete fix,
+is to mark the HLS input format as supporting discontinuities. This
+will prevent timestamp fixup logic in ffmpeg.c kicking in that ends
+up mangling the timestamps unnecessarily.
+
+I've tested this out with an example provided by Joe Koberg early
+last year, and it is sufficient to allow `ffmpeg` to download and
+mux the stream correctly. Joe had briefly suggested that other
+situations can still be handled incorrectly, but this seems like
+a strict improvement.
+
+Joe's example:
+
+https://s3.amazonaws.com/playon-test-videos/discont_test_new/discont_test.m3u8
+---
+ libavformat/hls.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libavformat/hls.c b/libavformat/hls.c
+index d7f4d5b442..ac151d5ca4 100644
+--- a/libavformat/hls.c
++++ b/libavformat/hls.c
+@@ -2326,7 +2326,7 @@ AVInputFormat ff_hls_demuxer = {
+     .long_name      = NULL_IF_CONFIG_SMALL("Apple HTTP Live Streaming"),
+     .priv_class     = &hls_class,
+     .priv_data_size = sizeof(HLSContext),
+-    .flags          = AVFMT_NOGENSEARCH,
++    .flags          = AVFMT_NOGENSEARCH | AVFMT_TS_DISCONT,
+     .read_probe     = hls_probe,
+     .read_header    = hls_read_header,
+     .read_packet    = hls_read_packet,
